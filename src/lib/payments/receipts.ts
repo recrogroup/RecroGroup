@@ -65,14 +65,20 @@ async function recipientFor(paymentId: string) {
     payment.user?.name ??
     "there";
 
-  const email =
+  const email = deliverableEmail(
     payment.booking?.clientEmail ??
-    payment.griefApplication?.parentEmail ??
-    payment.donation?.donorEmail ??
-    payment.user?.email ??
-    null;
+      payment.griefApplication?.parentEmail ??
+      payment.donation?.donorEmail ??
+      payment.user?.email,
+  );
 
   return { payment, name, email };
+}
+
+function deliverableEmail(value: string | null | undefined) {
+  const email = value?.trim() ?? "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+  return email;
 }
 
 export async function sendPaymentReceipt(paymentId: string) {

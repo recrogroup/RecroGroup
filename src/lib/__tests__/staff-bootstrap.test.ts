@@ -58,6 +58,7 @@ describe("syncBootstrapStaffRole", () => {
       id: "u1",
       email: "info@recrogroup.org",
       role: "customer",
+      emailVerified: true,
     });
 
     expect(role).toBe("admin");
@@ -67,15 +68,37 @@ describe("syncBootstrapStaffRole", () => {
     });
   });
 
-  it("does not demote an existing admin", async () => {
+  it("corrects carolinehawi91@gmail.com from Director to receptionist", async () => {
+    prismaMock.siteSetting.findUnique.mockResolvedValueOnce(null);
+    prismaMock.user.update.mockResolvedValueOnce({ id: "u1" });
+
     const role = await syncBootstrapStaffRole({
       id: "u1",
       email: "carolinehawi91@gmail.com",
       role: "admin",
+      emailVerified: true,
     });
 
-    expect(role).toBe("admin");
-    expect(prismaMock.user.update).not.toHaveBeenCalled();
+    expect(role).toBe("receptionist");
+    expect(prismaMock.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { role: "receptionist" },
+    });
+  });
+
+  it("does not promote an unverified inbox", async () => {
+    const role = await syncBootstrapStaffRole({
+      id: "u1",
+      email: "info@recrogroup.org",
+      role: "admin",
+      emailVerified: false,
+    });
+
+    expect(role).toBe("customer");
+    expect(prismaMock.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { role: "customer" },
+    });
   });
 
   it("does not restore a role that was explicitly removed", async () => {
@@ -87,6 +110,7 @@ describe("syncBootstrapStaffRole", () => {
       id: "u1",
       email: "info@recrogroup.org",
       role: "customer",
+      emailVerified: true,
     });
 
     expect(role).toBe("customer");

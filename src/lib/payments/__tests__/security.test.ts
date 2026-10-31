@@ -17,15 +17,18 @@ afterEach(() => {
 });
 
 describe("clientIpFrom", () => {
-  it("takes the first hop from x-forwarded-for", () => {
+  it("uses the address Vercel observed, not a caller-supplied forwarded hop", () => {
     const headers = new Headers({
-      "x-forwarded-for": `${SAFARICOM_IP}, 10.0.0.1, 10.0.0.2`,
+      "x-forwarded-for": SAFARICOM_IP,
+      "x-vercel-forwarded-for": `${FOREIGN_IP}, 10.0.0.1`,
     });
-    expect(clientIpFrom(headers)).toBe(SAFARICOM_IP);
+    expect(clientIpFrom(headers)).toBe(FOREIGN_IP);
   });
 
-  it("trims whitespace around the first hop", () => {
-    const headers = new Headers({ "x-forwarded-for": `  ${FOREIGN_IP} , 10.0.0.1` });
+  it("trims the Vercel address", () => {
+    const headers = new Headers({
+      "x-vercel-forwarded-for": `  ${FOREIGN_IP} , 10.0.0.1`,
+    });
     expect(clientIpFrom(headers)).toBe(FOREIGN_IP);
   });
 
@@ -34,13 +37,13 @@ describe("clientIpFrom", () => {
     expect(clientIpFrom(headers)).toBe(FOREIGN_IP);
   });
 
-  it("returns null when neither header is present", () => {
-    expect(clientIpFrom(new Headers())).toBeNull();
+  it("returns null when neither trusted header is present", () => {
+    expect(clientIpFrom(new Headers({ "x-forwarded-for": SAFARICOM_IP }))).toBeNull();
   });
 
-  it("prefers x-forwarded-for over x-real-ip", () => {
+  it("prefers the Vercel address over x-real-ip", () => {
     const headers = new Headers({
-      "x-forwarded-for": SAFARICOM_IP,
+      "x-vercel-forwarded-for": SAFARICOM_IP,
       "x-real-ip": FOREIGN_IP,
     });
     expect(clientIpFrom(headers)).toBe(SAFARICOM_IP);

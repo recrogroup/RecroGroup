@@ -238,8 +238,8 @@ export function BookingCalendar({
             {formatWeekRange(weekStart)}
           </h2>
           <p className="mt-1 max-w-xl text-sm text-slate-600">
-            Block an open hour with the candidate’s details. That booking then
-            opens like any other reserved session.
+            Block an open hour with the candidate’s details. The booking holds
+            that weekday and time every week, the same way other sessions do.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -430,8 +430,8 @@ export function BookingCalendar({
             <DialogTitle>Reserve this hour</DialogTitle>
             <DialogDescription>
               {target
-                ? `${target.long} ${target.date} at ${target.time}. Name and session type are required.`
-                : "Name and session type are required."}
+                ? `${target.long}s at ${target.time}, starting ${target.date}. Name and session type are required. Email and phone can wait.`
+                : "Name and session type are required. Email and phone can wait."}
             </DialogDescription>
           </DialogHeader>
           <form

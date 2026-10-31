@@ -198,6 +198,19 @@ describe("settlePayment", () => {
     expect(booking.update).not.toHaveBeenCalled();
   });
 
+  it("does not mark a short payment as paid", async () => {
+    payment.findUnique.mockResolvedValueOnce(PENDING_PAYMENT);
+
+    const result = await settlePayment("pay_1", {
+      ...EVENT.result,
+      settledAmountKes: 1,
+    });
+
+    expect(result).toMatchObject({ applied: false, reason: "amount_mismatch" });
+    expect(payment.update).not.toHaveBeenCalled();
+    expect(booking.update).not.toHaveBeenCalled();
+  });
+
   it("reports a missing payment rather than throwing", async () => {
     payment.findUnique.mockResolvedValueOnce(null);
 

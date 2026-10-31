@@ -1,18 +1,13 @@
-// Sign-in for the whole site. Email/password does not confirm the inbox.
-// Google sign-in does, because Google already verified that address.
-// A new user is given Director or Admin here when their email is on the
-// bootstrap list; every later request re-checks that in customSession.
-// See HANDOVER.md.
+// Sign-in for the whole site. Google sign-in confirms the inbox. Email and
+// password does not, until the person opens the verification link we email.
+// Staff roles are applied only after that confirmation. See HANDOVER.md.
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 import { admin, customSession } from "better-auth/plugins";
 
 import { prisma } from "@/lib/prisma";
-import {
-  bootstrapRoleForEmail,
-  syncBootstrapStaffRole,
-} from "@/lib/staff-bootstrap";
+import { syncBootstrapStaffRole } from "@/lib/staff-bootstrap";
 
 const PRODUCTION_HOST = "recrogroup.org";
 const isVercel = Boolean(process.env.VERCEL);
@@ -101,16 +96,6 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
-  databaseHooks: {
-    user: {
-      create: {
-        before: async (user) => {
-          const role = bootstrapRoleForEmail(user.email) ?? user.role ?? "customer";
-          return { data: { ...user, role } };
-        },
-      },
-    },
-  },
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
@@ -119,6 +104,22 @@ export const auth = betterAuth({
       const { passwordReset } = await import("@/lib/mail/templates");
       await sendEmail(
         passwordReset({
+          recipientEmail: user.email,
+          recipientName: user.name,
+          url,
+        }),
+      );
+    },
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    sendOnSignIn: true,
+    autoSignInAfterVerification: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      const { sendEmail } = await import("@/lib/mail");
+      const { verifyEmail } = await import("@/lib/mail/templates");
+      await sendEmail(
+        verifyEmail({
           recipientEmail: user.email,
           recipientName: user.name,
           url,
@@ -180,6 +181,7 @@ export const auth = betterAuth({
         id: user.id,
         email: user.email,
         role: "role" in user ? (user.role as string | null) : null,
+        emailVerified: "emailVerified" in user ? Boolean(user.emailVerified) : false,
       });
 
       return {

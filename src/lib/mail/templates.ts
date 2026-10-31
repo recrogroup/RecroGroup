@@ -343,6 +343,29 @@ export function passwordReset(input: {
   };
 }
 
+export function verifyEmail(input: {
+  recipientEmail: string;
+  recipientName: string;
+  url: string;
+}): EmailMessage {
+  const { html, text } = layout({
+    heading: "Confirm your email",
+    greeting: `Hello ${firstName(input.recipientName)},`,
+    paragraphs: [
+      "Open the button below to confirm this inbox. Staff access is only granted after this link is used.",
+      "If you did not create a Recro account, you can ignore this email.",
+    ],
+    cta: { label: "Confirm email", url: input.url },
+  });
+
+  return {
+    to: { email: input.recipientEmail, name: input.recipientName },
+    subject: "Confirm your Recro email",
+    html,
+    text,
+  };
+}
+
 export function staffGriefApplicationAlert(input: {
   recipientEmail: string;
   reference: string;

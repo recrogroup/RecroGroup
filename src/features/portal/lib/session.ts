@@ -27,6 +27,7 @@ export async function getPortalSession(): Promise<PortalSession | null> {
     id: session.user.id,
     email: session.user.email,
     role: session.user.role,
+    emailVerified: session.user.emailVerified,
   });
 
   return {

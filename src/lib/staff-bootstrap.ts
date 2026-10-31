@@ -1,7 +1,9 @@
 // Grants Director (stored role "admin") and Admin (stored role "receptionist")
-// on sign-in. Production uses a different database from a laptop, so this list
-// is what makes info@recrogroup.org a Director there. An existing Director is
-// not demoted, except the retired address minanicalm@gmail.com, once.
+// on sign-in, only after the inbox is verified. Production uses a different
+// database from a laptop, so this list is what makes info@recrogroup.org a
+// Director there. carolinehawi91@gmail.com is the receptionist and is never
+// left as Director. An existing Director is not demoted, except that
+// receptionist address and the retired address minanicalm@gmail.com.
 // See HANDOVER.md.
 import { prisma } from "@/lib/prisma";
 import {
@@ -11,6 +13,8 @@ import {
 
 /** Staff granted locally; production is a separate DB so these must be reapplied. */
 const DEFAULT_ADMIN_EMAILS = ["info@recrogroup.org"];
+/** Shown as Admin. A stored Director role on this address is corrected. */
+const RECEPTIONIST_NEVER_DIRECTOR = "carolinehawi91@gmail.com";
 const PREVIOUS_SUPER_ADMIN = "minanicalm@gmail.com";
 const SUPER_ADMIN_RETIRED_KEY = "previous_super_admin_retired";
 const DEFAULT_RECEPTIONIST_EMAILS = ["carolinehawi91@gmail.com"];
@@ -99,18 +103,41 @@ export async function syncBootstrapStaffRole(user: {
   id: string;
   email: string;
   role?: string | null;
+  emailVerified?: boolean;
 }): Promise<AppRole> {
   const retired = await retirePreviousSuperAdmin(user);
   if (retired) return retired;
 
   const current = parseAppRole(user.role);
+  const normalized = normalizeEmail(user.email);
+  const verified = user.emailVerified === true;
+
+  if (normalized === RECEPTIONIST_NEVER_DIRECTOR && current === "admin") {
+    const revoked = (await listRevokedStaffEmails()).includes(normalized);
+    const next: AppRole = revoked || !verified ? "customer" : "receptionist";
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { role: next },
+    });
+    return next;
+  }
+
   const desired = bootstrapRoleForEmail(user.email);
+
+  if (desired && !verified) {
+    if (current === "admin" || current === "receptionist") {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { role: "customer" },
+      });
+      return "customer";
+    }
+    return current;
+  }
 
   if (!desired || current === desired) return current;
   if (current === "admin") return current;
-  if ((await listRevokedStaffEmails()).includes(normalizeEmail(user.email))) {
-    return current;
-  }
+  if ((await listRevokedStaffEmails()).includes(normalized)) return current;
 
   await prisma.user.update({
     where: { id: user.id },

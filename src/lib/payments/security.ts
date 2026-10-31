@@ -20,9 +20,12 @@ function extraAllowlist() {
 }
 
 export function clientIpFrom(headers: Headers) {
-  const forwarded = headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]?.trim() ?? null;
-  return headers.get("x-real-ip");
+  // x-forwarded-for can be set by the caller. Vercel overwrites
+  // x-vercel-forwarded-for with the address it actually saw.
+  const vercel = headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim();
+  if (vercel) return vercel;
+  const real = headers.get("x-real-ip")?.trim();
+  return real || null;
 }
 
 export function isTrustedDarajaIp(ip: string | null) {

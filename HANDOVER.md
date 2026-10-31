@@ -94,7 +94,7 @@ The database stores `admin`, `receptionist`, or `customer`. The screens show dif
 | `receptionist` | Admin | Bookings, payments, programs, messages. Not the customer list or settings. |
 | `customer` | Customer | Their own account. Staff pages redirect them home. |
 
-If `BOOTSTRAP_ADMIN_EMAILS` is empty, signing in as `info@recrogroup.org` becomes Director. If `BOOTSTRAP_RECEPTIONIST_EMAILS` is empty, `carolinehawi91@gmail.com` becomes Admin (receptionist). This runs on every session from `src/lib/staff-bootstrap.ts`, because the production database does not copy local role edits by itself.
+If `BOOTSTRAP_ADMIN_EMAILS` is empty, a verified sign-in as `info@recrogroup.org` becomes Director. If `BOOTSTRAP_RECEPTIONIST_EMAILS` is empty, a verified sign-in as `carolinehawi91@gmail.com` becomes Admin (receptionist). That address is never Director; a stored Director role on it is corrected. An unverified password account stays a customer until the person opens the confirmation email. This runs on every session from `src/lib/staff-bootstrap.ts`, because the production database does not copy local role edits by itself.
 
 `minanicalm@gmail.com` was the previous Director. The next time that account signs in, it is set back to customer once. A later manual grant is left in place.
 

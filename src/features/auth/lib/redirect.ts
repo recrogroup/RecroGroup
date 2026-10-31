@@ -7,6 +7,7 @@ const AUTH_PREFIXES = [
   "/join-us",
   "/forgot-password",
   "/reset-password",
+  "/verify-email",
   SIGNED_IN_PATH,
 ];
 

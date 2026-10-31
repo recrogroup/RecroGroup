@@ -217,6 +217,13 @@ export async function settlePayment(paymentId: string, result: VerifyResult) {
       return { applied: false as const, reason: "already_final" as const, payment };
     }
 
+    if (result.status === "PAID") {
+      const reported = result.settledAmountKes;
+      if (reported == null || reported < payment.amountKes) {
+        return { applied: false as const, reason: "amount_mismatch" as const, payment };
+      }
+    }
+
     const settledAmount = result.settledAmountKes ?? payment.amountKes;
     const paidAt = result.status === "PAID" ? (result.paidAt ?? new Date()) : null;
 
