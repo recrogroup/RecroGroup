@@ -14,6 +14,10 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { ClearProductionDataButton } from "@/features/admin/components/clear-production-data-button";
+import {
+  BookingCalendar,
+  type CalendarOccupant,
+} from "@/features/portal/components/booking-calendar";
 import { PortalPageHeader } from "@/features/portal/components/portal-page-header";
 import {
   StatusBadge,
@@ -38,6 +42,7 @@ export type BookingRow = {
   amountPaidKes: number;
   latestPaymentReference: string | null;
   latestFailureReason: string | null;
+  needsNewTime?: boolean;
 };
 
 function humanize(value: string) {
@@ -46,9 +51,11 @@ function humanize(value: string) {
 
 export function BookingsPanel({
   bookings,
+  occupants = [],
   canClear = false,
 }: {
   bookings: BookingRow[];
+  occupants?: CalendarOccupant[];
   canClear?: boolean;
 }) {
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -76,9 +83,11 @@ export function BookingsPanel({
     <div className="space-y-5">
       <PortalPageHeader
         title="Bookings"
-        description="Only bookings with a successful M-Pesa payment are kept here."
+        description="The calendar shows booked hours. Click Block on an empty hour to close it; click a blocked hour to open it again. Website checkouts hold a slot for 5 minutes."
         actions={canClear ? <ClearProductionDataButton /> : null}
       />
+
+      <BookingCalendar occupants={occupants} />
 
       <Card>
         <CardContent className="p-0">
@@ -120,6 +129,11 @@ export function BookingsPanel({
                         {row.slotLabel ?? row.preferredDateLabel}
                         {row.clientPhone ? ` · ${row.clientPhone}` : ""}
                       </p>
+                      {row.needsNewTime && (
+                        <p className="mt-1 text-xs text-amber-700">
+                          Needs a new time — this hour is held by an earlier booking.
+                        </p>
+                      )}
                       {row.latestFailureReason && (
                         <p className="mt-1 line-clamp-2 text-xs text-destructive">
                           {row.latestFailureReason}

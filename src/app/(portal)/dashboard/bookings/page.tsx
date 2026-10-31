@@ -6,12 +6,20 @@ import { permanentSlotLabel } from "@/features/public/booking/lib/slots";
 import { formatDate } from "@/features/portal/lib/format";
 import { getRequiredSession } from "@/features/portal/lib/portal-guard";
 import { isAdmin } from "@/features/portal/lib/roles";
+import { listCalendarOccupancy } from "@/server/booking-slots";
 import { listBookings } from "@/server/queries/bookings";
 
 export default async function BookingsPage() {
   const session = await getRequiredSession("/dashboard/bookings");
 
-  const bookings = await listBookings({ hasSuccessfulPayment: true, take: 200 });
+  const [bookings, occupants] = await Promise.all([
+    listBookings({
+      hasSuccessfulPayment: true,
+      includeUnpaidConfirmed: true,
+      take: 200,
+    }),
+    listCalendarOccupancy(),
+  ]);
 
   const rows: BookingRow[] = bookings.items.map((booking) => ({
     id: booking.id,
@@ -31,7 +39,14 @@ export default async function BookingsPage() {
     amountPaidKes: booking.amountPaidKes,
     latestPaymentReference: booking.payments[0]?.reference ?? null,
     latestFailureReason: booking.payments[0]?.failureReason ?? null,
+    needsNewTime: Boolean(booking.rescheduleReason),
   }));
 
-  return <BookingsPanel bookings={rows} canClear={isAdmin(session.role)} />;
+  return (
+    <BookingsPanel
+      bookings={rows}
+      occupants={occupants}
+      canClear={isAdmin(session.role)}
+    />
+  );
 }

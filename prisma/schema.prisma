@@ -44,6 +44,7 @@ model User {
   griefApplications GriefApplication[]
   savedResources    SavedResource[]
   donations         Donation[]
+  blockedSlots      BlockedSlot[]
 
   @@unique([email])
   @@index([role])
@@ -297,6 +298,22 @@ model Booking {
   @@index([status])
   @@index([createdAt])
   @@map("bookings")
+}
+
+model BlockedSlot {
+  id          String   @id @default(cuid())
+  weekday     Int
+  time        String
+  durationMin Int      @default(60)
+  note        String?
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([weekday, time])
+  @@index([weekday])
+  @@map("blocked_slots")
 }
 
 enum AppointmentStatus {

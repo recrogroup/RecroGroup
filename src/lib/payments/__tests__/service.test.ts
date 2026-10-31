@@ -26,6 +26,7 @@ const prismaMock = {
   payment,
   paymentEvent,
   booking,
+  blockedSlot: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn(), delete: vi.fn() },
   griefApplication: { findUnique: vi.fn(), update: vi.fn() },
   donation: { update: vi.fn() },
   $transaction: vi.fn(),

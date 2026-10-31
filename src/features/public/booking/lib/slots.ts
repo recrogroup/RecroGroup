@@ -1,7 +1,13 @@
 export const DEFAULT_SESSION_MINUTES = 60;
 
 export const SLOT_TAKEN_MESSAGE =
-  "This day and time was taken by an earlier M-Pesa payment. Choose a different date and time.";
+  "This day and time was taken by an earlier booking. Choose a different date and time.";
+
+export const SLOT_UNAVAILABLE_MESSAGE =
+  "That day and time is already booked. Choose a different slot. A longer session also blocks the following hours.";
+
+/** Unpaid website checkouts hold the weekday and time so a second client cannot take it. */
+export const UNPAID_HOLD_MS = 5 * 60 * 1000;
 
 const WEEKDAY_INDEX: Record<string, number> = {
   Sun: 0,
@@ -43,6 +49,31 @@ export function nairobiDate(isoDate: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
   const date = new Date(`${isoDate}T12:00:00+03:00`);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export function nairobiYmd(date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+/** Monday (YYYY-MM-DD) of the Nairobi week that contains `date`. */
+export function nairobiWeekStart(date: Date | string = new Date()): string {
+  const ymd = typeof date === "string" ? date : nairobiYmd(date);
+  const noon = nairobiDate(ymd);
+  if (!noon) return nairobiYmd();
+  const weekday = nairobiWeekday(noon);
+  const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+  return nairobiYmd(new Date(noon.getTime() + mondayOffset * 86_400_000));
+}
+
+export function addNairobiDays(isoDate: string, days: number): string {
+  const noon = nairobiDate(isoDate);
+  if (!noon) return isoDate;
+  return nairobiYmd(new Date(noon.getTime() + days * 86_400_000));
 }
 
 export function parseSlotMinutes(label: string): number | null {
@@ -116,6 +147,47 @@ export type SlotClaim = {
   durationMin: number;
   paidAtMs: number;
 };
+
+export type BookingHoldInput = {
+  status: string;
+  preferredDate: Date | null;
+  preferredTime: string | null;
+  createdAt: Date;
+  amountPaidKes: number;
+  paidAtMs: number | null;
+  hasLivePayment: boolean;
+};
+
+/** True while a booking should keep its weekday and time off the public calendar. */
+export function bookingHoldsSlot(row: BookingHoldInput, now = Date.now()) {
+  if (row.status === "CANCELLED" || row.status === "COMPLETED") return false;
+  if (!row.preferredDate || !row.preferredTime) return false;
+  if (row.status === "CONFIRMED") return true;
+  if (row.paidAtMs != null || row.amountPaidKes > 0) return true;
+  if (row.hasLivePayment) return true;
+  return now - row.createdAt.getTime() < UNPAID_HOLD_MS;
+}
+
+export function livePaymentOpen(
+  payments: { status: string; expiresAt?: Date | null }[],
+  now = Date.now(),
+) {
+  return payments.some(
+    (payment) =>
+      (payment.status === "PENDING" || payment.status === "PROCESSING") &&
+      (!payment.expiresAt || payment.expiresAt.getTime() > now),
+  );
+}
+
+export function earliestPaidAtMs(
+  payments: { status: string; paidAt?: Date | null; createdAt: Date }[],
+) {
+  const paid = payments.filter((payment) => payment.status === "PAID");
+  if (paid.length === 0) return null;
+  return Math.min(
+    ...paid.map((payment) => (payment.paidAt ?? payment.createdAt).getTime()),
+  );
+}
 
 /** Earliest successful payment keeps the weekday and time. Later overlaps must move. */
 export function slotWinners(claims: SlotClaim[]) {

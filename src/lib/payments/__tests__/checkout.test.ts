@@ -13,6 +13,9 @@ const failPayment = vi.fn();
 const getProvider = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
+vi.mock("@/server/booking-slots", () => ({
+  isSlotAvailable: vi.fn().mockResolvedValue(true),
+}));
 vi.mock("@/lib/payments/service", () => ({
   createPendingPayment,
   markPaymentProcessing,
@@ -32,6 +35,7 @@ vi.mock("@/lib/payments/index", async () => {
 });
 
 const { PaymentError } = await import("@/lib/payments/types");
+const { isSlotAvailable } = await import("@/server/booking-slots");
 const { startCheckout } = await import("@/lib/payments/checkout");
 
 const BOOKING = {
@@ -181,6 +185,27 @@ describe("startCheckout", () => {
       name: "PaymentError",
       code: "invalid_phone",
     });
+
+    expect(createPendingPayment).not.toHaveBeenCalled();
+  });
+
+  it("refuses to charge when another booking already holds the slot", async () => {
+    vi.mocked(isSlotAvailable).mockResolvedValueOnce(false);
+    prismaMock.booking.findUnique.mockResolvedValue({
+      ...BOOKING,
+      status: "REQUESTED",
+      preferredDate: new Date("2026-10-27T09:00:00.000Z"),
+      preferredTime: "10:00 AM",
+      durationMin: 60,
+    });
+
+    await expect(
+      startCheckout({
+        target: { kind: "booking", bookingId: "bk_1" },
+        method: "MPESA",
+        phone: "0712345678",
+      }),
+    ).rejects.toMatchObject({ code: "slot_taken" });
 
     expect(createPendingPayment).not.toHaveBeenCalled();
   });

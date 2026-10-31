@@ -8,6 +8,8 @@ import { Prisma } from "@prisma/client";
 import type { PaymentMethod, PaymentPurpose } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { isSlotAvailable } from "@/server/booking-slots";
+import { sessionMinutes } from "@/features/public/booking/lib/slots";
 
 import { readPaymentAccessToken } from "./access-token";
 import { absoluteUrl, paymentsConfig, resolveStkCallbackUrl } from "./config";
@@ -74,6 +76,27 @@ async function resolveCharge(input: CheckoutInput): Promise<ResolvedCharge> {
         include: { service: true },
       });
       if (!booking) throw new PaymentError("not_found", "Booking not found");
+      if (booking.status === "CANCELLED" || booking.status === "COMPLETED") {
+        throw new PaymentError(
+          "slot_taken",
+          "This booking is no longer holding a time. Start a new booking to choose an open slot.",
+        );
+      }
+
+      if (booking.preferredDate && booking.preferredTime) {
+        const slotFree = await isSlotAvailable({
+          date: booking.preferredDate,
+          time: booking.preferredTime,
+          durationMin: sessionMinutes(booking.durationMin, booking.service?.durationMin),
+          ignoreBookingId: booking.id,
+        });
+        if (!slotFree) {
+          throw new PaymentError(
+            "slot_taken",
+            "That day and time is already booked. Choose a different slot before paying.",
+          );
+        }
+      }
 
       const charge = resolveBookingChargeAmount(booking);
       if (charge.amountKes <= 0) {

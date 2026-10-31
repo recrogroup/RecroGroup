@@ -7,6 +7,7 @@ import { requireAdminArea } from "@/features/admin/lib/admin-guard";
 import { permanentSlotLabel } from "@/features/public/booking/lib/slots";
 import { formatDate } from "@/features/portal/lib/format";
 import { deliverUnsentBookingReceipts } from "@/lib/payments/receipts";
+import { listCalendarOccupancy } from "@/server/booking-slots";
 import { listBookings } from "@/server/queries/bookings";
 import { listTherapists } from "@/server/queries/catalog";
 
@@ -14,9 +15,14 @@ export default async function BookingsPage() {
     const session = await requireAdminArea();
     await deliverUnsentBookingReceipts();
 
-    const [bookings, therapists] = await Promise.all([
-        listBookings({ hasSuccessfulPayment: true, take: 200 }),
+    const [bookings, therapists, occupants] = await Promise.all([
+        listBookings({
+            hasSuccessfulPayment: true,
+            includeUnpaidConfirmed: true,
+            take: 200,
+        }),
         listTherapists(),
+        listCalendarOccupancy(),
     ]);
 
     const rows: AdminBookingRow[] = bookings.items.map((booking) => ({
@@ -40,6 +46,7 @@ export default async function BookingsPage() {
         amountPaidKes: booking.amountPaidKes,
         latestPaymentReference: booking.payments[0]?.reference ?? null,
         latestFailureReason: booking.payments[0]?.failureReason ?? null,
+        needsNewTime: Boolean(booking.rescheduleReason),
         createdAtLabel: formatDate(booking.createdAt),
     }));
 
@@ -53,6 +60,7 @@ export default async function BookingsPage() {
     return (
         <AdminBookingsPage
             bookings={rows}
+            occupants={occupants}
             therapists={therapistOptions}
             total={bookings.total}
             isAdmin={session.role === "admin"}

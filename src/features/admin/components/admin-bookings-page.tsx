@@ -13,6 +13,11 @@ import {
 } from "@/server/actions/operations";
 import type { ActionResult } from "@/server/result";
 
+import {
+  BookingCalendar,
+  type CalendarOccupant,
+} from "@/features/portal/components/booking-calendar";
+
 import { ClearProductionDataButton } from "./clear-production-data-button";
 import { AdminShell, Card, DataTable, PageHeader, StatusBadge } from "./admin-shell";
 
@@ -34,6 +39,7 @@ export type AdminBookingRow = {
   amountPaidKes: number;
   latestPaymentReference: string | null;
   latestFailureReason: string | null;
+  needsNewTime?: boolean;
   createdAtLabel: string;
 };
 
@@ -44,6 +50,7 @@ export type AdminTherapistOption = {
 
 type AdminBookingsPageProps = {
   bookings: AdminBookingRow[];
+  occupants?: CalendarOccupant[];
   therapists: AdminTherapistOption[];
   total: number;
   isAdmin: boolean;
@@ -92,6 +99,7 @@ function paymentTone(status: string) {
 
 export function AdminBookingsPage({
   bookings,
+  occupants = [],
   therapists,
   total,
   isAdmin,
@@ -164,8 +172,12 @@ export function AdminBookingsPage({
       <div className="p-6 lg:p-8">
         <PageHeader
           title="Bookings"
-          description="Only bookings with a successful M-Pesa payment are kept here."
+          description="Use the calendar to see reserved hours. Click Block on an empty hour to close it; click a blocked hour to open it again."
         />
+
+        <div className="mt-6">
+          <BookingCalendar occupants={occupants} />
+        </div>
 
         <div className="mt-6 flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
@@ -255,6 +267,11 @@ export function AdminBookingsPage({
                     <div className="text-xs text-gray-500">
                       {row.slotLabel ?? row.preferredTime ?? "—"}
                     </div>
+                    {row.needsNewTime ? (
+                      <div className="mt-1 text-xs text-amber-700">
+                        Needs a new time
+                      </div>
+                    ) : null}
                   </div>,
                   <select
                     key="therapist"

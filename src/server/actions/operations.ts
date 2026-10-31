@@ -6,6 +6,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { Prisma } from "@prisma/client";
 import type {
   AppointmentStatus,
   BookingStatus,
@@ -15,8 +16,16 @@ import type {
 
 import { prisma } from "@/lib/prisma";
 import { ensurePaymentsSchema } from "@/lib/payments/ensure-schema";
-import { permanentSlotLabel } from "@/features/public/booking/lib/slots";
-import { reconcileBookingSlots } from "@/server/booking-slots";
+import { isTimeSlot } from "@/features/public/booking/lib/schedule";
+import { permanentSlotLabel, sessionMinutes } from "@/features/public/booking/lib/slots";
+import {
+  SlotUnavailableError,
+  assertSlotFree,
+  createBlockedSlot,
+  deleteBlockedSlot,
+  reconcileBookingSlots,
+  withSlotLock,
+} from "@/server/booking-slots";
 import { AuthorizationError, requireAdmin, requireStaff } from "@/server/authz";
 import type { ActionResult } from "@/server/result";
 import { fail, failure, ok } from "@/server/result";
@@ -134,13 +143,53 @@ export async function setBookingStatus(
       return fail("Unknown booking status");
     }
 
-    const booking = await prisma.booking.update({
+    const current = await prisma.booking.findUnique({
       where: { id: bookingId },
-      data: { status },
-      select: { id: true, status: true },
+      select: {
+        id: true,
+        status: true,
+        preferredDate: true,
+        preferredTime: true,
+        durationMin: true,
+        service: { select: { durationMin: true } },
+      },
     });
+    if (!current) return fail("Booking not found");
 
-    await reconcileBookingSlots();
+    const restoring =
+      (status === "REQUESTED" || status === "CONFIRMED") &&
+      (current.status === "CANCELLED" || current.status === "COMPLETED");
+
+    if (restoring && current.preferredDate && current.preferredTime) {
+      try {
+        await withSlotLock(async (tx) => {
+          await assertSlotFree(tx, {
+            date: current.preferredDate!,
+            time: current.preferredTime!,
+            durationMin: sessionMinutes(current.durationMin, current.service?.durationMin),
+            ignoreBookingId: bookingId,
+          });
+          await tx.booking.update({
+            where: { id: bookingId },
+            data: { status },
+          });
+          await reconcileBookingSlots(tx);
+        });
+      } catch (error) {
+        if (error instanceof SlotUnavailableError) {
+          return fail("That day and time is already booked. Free it or choose another slot first.");
+        }
+        throw error;
+      }
+    } else {
+      await prisma.booking.update({
+        where: { id: bookingId },
+        data: { status },
+      });
+      await reconcileBookingSlots();
+    }
+
+    const booking = { id: bookingId, status };
 
     revalidatePath("/dashboard/bookings");
     revalidatePath(`/dashboard/bookings/${bookingId}`);
@@ -195,6 +244,57 @@ export async function releaseBookingSlot(
   } catch (error) {
     if (error instanceof AuthorizationError) return fail(error.message);
     return failure("releaseBookingSlot", error);
+  }
+}
+
+function revalidateSlotPaths() {
+  revalidatePath("/dashboard/bookings");
+  revalidatePath("/admin/bookings");
+  revalidatePath("/booking");
+}
+
+export async function blockCalendarSlot(input: {
+  weekday: number;
+  time: string;
+}): Promise<ActionResult<{ id: string; weekday: number; time: string }>> {
+  try {
+    const session = await requireStaff();
+    if (!isTimeSlot(input.time)) return fail("Choose a clinic time");
+    if (input.weekday < 1 || input.weekday > 6) {
+      return fail("Choose a weekday from Monday to Saturday");
+    }
+
+    const blocked = await createBlockedSlot({
+      weekday: input.weekday,
+      time: input.time,
+      createdById: session.userId,
+    });
+
+    revalidateSlotPaths();
+    return ok(blocked);
+  } catch (error) {
+    if (error instanceof AuthorizationError) return fail(error.message);
+    if (error instanceof SlotUnavailableError) {
+      return fail("That day and time is already booked or blocked");
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return fail("That day and time is already blocked");
+    }
+    return failure("blockCalendarSlot", error);
+  }
+}
+
+export async function unblockCalendarSlot(
+  id: string,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    await requireStaff();
+    const blocked = await deleteBlockedSlot(id);
+    revalidateSlotPaths();
+    return ok(blocked);
+  } catch (error) {
+    if (error instanceof AuthorizationError) return fail(error.message);
+    return failure("unblockCalendarSlot", error);
   }
 }
 

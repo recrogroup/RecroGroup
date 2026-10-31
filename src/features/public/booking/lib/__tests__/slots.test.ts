@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  UNPAID_HOLD_MS,
+  bookingHoldsSlot,
   formatMinutesLabel,
   isStartTaken,
+  nairobiWeekStart,
   nairobiWeekday,
   parseSlotMinutes,
   permanentSlotLabel,
@@ -69,6 +72,54 @@ describe("session windows", () => {
     expect(
       permanentSlotLabel(new Date("2026-09-29T00:00:00.000Z"), "10:00 AM"),
     ).toBe("Every Tuesday at 10:00 AM");
+  });
+});
+
+describe("bookingHoldsSlot", () => {
+  const base = {
+    status: "REQUESTED",
+    preferredDate: new Date("2026-10-27T09:00:00.000Z"),
+    preferredTime: "10:00 AM",
+    createdAt: new Date("2026-10-27T08:00:00.000Z"),
+    amountPaidKes: 0,
+    paidAtMs: null as number | null,
+    hasLivePayment: false,
+  };
+
+  it("holds an unpaid checkout that is still within the hold window", () => {
+    expect(
+      bookingHoldsSlot(base, base.createdAt.getTime() + UNPAID_HOLD_MS - 1_000),
+    ).toBe(true);
+  });
+
+  it("releases an abandoned unpaid checkout after the hold window", () => {
+    expect(
+      bookingHoldsSlot(base, base.createdAt.getTime() + UNPAID_HOLD_MS + 1_000),
+    ).toBe(false);
+  });
+
+  it("keeps a confirmed call booking even after the unpaid window", () => {
+    expect(
+      bookingHoldsSlot(
+        { ...base, status: "CONFIRMED" },
+        base.createdAt.getTime() + UNPAID_HOLD_MS * 3,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps a paid booking even after the unpaid window", () => {
+    expect(
+      bookingHoldsSlot(
+        { ...base, paidAtMs: base.createdAt.getTime(), amountPaidKes: 2500 },
+        base.createdAt.getTime() + UNPAID_HOLD_MS * 3,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("nairobiWeekStart", () => {
+  it("returns the Monday of the week in Nairobi", () => {
+    expect(nairobiWeekStart(new Date("2026-10-31T16:00:00.000Z"))).toBe("2026-10-26");
   });
 });
 

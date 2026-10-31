@@ -10,6 +10,8 @@ export type BookingFilters = {
   paymentStatus?: PaymentStatus;
   /** Booking has at least one successful M-Pesa payment. */
   hasSuccessfulPayment?: boolean;
+  /** Include confirmed call-in bookings that have no M-Pesa payment yet. */
+  includeUnpaidConfirmed?: boolean;
   serviceId?: string;
   therapistId?: string;
   search?: string;
@@ -19,10 +21,18 @@ export type BookingFilters = {
 
 function bookingWhere(filters: BookingFilters): Prisma.BookingWhereInput {
   const where: Prisma.BookingWhereInput = {};
+  const clauses: Prisma.BookingWhereInput[] = [];
 
   if (filters.status) where.status = filters.status;
   if (filters.paymentStatus) where.paymentStatus = filters.paymentStatus;
-  if (filters.hasSuccessfulPayment) {
+  if (filters.hasSuccessfulPayment && filters.includeUnpaidConfirmed) {
+    clauses.push({
+      OR: [
+        { payments: { some: { status: "PAID", method: "MPESA" } } },
+        { status: "CONFIRMED" },
+      ],
+    });
+  } else if (filters.hasSuccessfulPayment) {
     where.payments = { some: { status: "PAID", method: "MPESA" } };
   }
   if (filters.serviceId) where.serviceId = filters.serviceId;
@@ -30,13 +40,18 @@ function bookingWhere(filters: BookingFilters): Prisma.BookingWhereInput {
 
   const search = filters.search?.trim();
   if (search) {
-    where.OR = [
-      { reference: { contains: search, mode: "insensitive" } },
-      { clientName: { contains: search, mode: "insensitive" } },
-      { clientEmail: { contains: search, mode: "insensitive" } },
-      { clientPhone: { contains: search, mode: "insensitive" } },
-    ];
+    clauses.push({
+      OR: [
+        { reference: { contains: search, mode: "insensitive" } },
+        { clientName: { contains: search, mode: "insensitive" } },
+        { clientEmail: { contains: search, mode: "insensitive" } },
+        { clientPhone: { contains: search, mode: "insensitive" } },
+      ],
+    });
   }
+
+  if (clauses.length === 1) Object.assign(where, clauses[0]);
+  else if (clauses.length > 1) where.AND = clauses;
 
   return where;
 }

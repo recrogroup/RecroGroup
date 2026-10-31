@@ -8,12 +8,18 @@ import { resolveServicePrice } from "@/lib/payments/pricing";
 import { generateReference, normalizePhone } from "@/lib/payments/utils";
 import { getOptionalSession } from "@/server/authz";
 import {
+  SlotUnavailableError,
+  assertSlotFree,
   getSlotAvailability,
-  isSlotAvailable,
   reconcileBookingSlots,
+  withSlotLock,
 } from "@/server/booking-slots";
 import { isTimeSlot } from "@/features/public/booking/lib/schedule";
-import { nairobiDate, sessionMinutes } from "@/features/public/booking/lib/slots";
+import {
+  SLOT_UNAVAILABLE_MESSAGE,
+  nairobiDate,
+  sessionMinutes,
+} from "@/features/public/booking/lib/slots";
 import type { ActionResult } from "@/server/result";
 import { fail, failure, invalid, ok } from "@/server/result";
 import type { BookingInput } from "@/server/validation/booking";
@@ -54,16 +60,8 @@ export async function createBooking(
         })
       : null;
     const durationMin = sessionMinutes(null, service?.durationMin);
-    const slotFree = await isSlotAvailable({
-      date: values.preferredDate,
-      time: values.preferredTime,
-      durationMin,
-    });
-    if (!slotFree) {
-      return fail(
-        "That day and time is already booked. Choose a different slot. A longer session also blocks the following hours.",
-        { preferredTime: ["Choose a different time"] },
-      );
+    if (!isTimeSlot(values.preferredTime)) {
+      return fail("Choose a clinic time", { preferredTime: ["Choose a different time"] });
     }
 
     const session = await getOptionalSession();
@@ -75,25 +73,33 @@ export async function createBooking(
         })
       : null;
 
-    const booking = await prisma.booking.create({
-      data: {
-        reference: generateReference("RB"),
-        userId: session?.userId ?? null,
-        serviceId: price.serviceId,
-        therapistId: therapist?.id ?? null,
-        clientName: values.clientName,
-        clientEmail: values.clientEmail,
-        clientPhone: normalizePhone(values.clientPhone),
-        preferredDate: values.preferredDate,
-        preferredTime: values.preferredTime,
+    const booking = await withSlotLock(async (tx) => {
+      await assertSlotFree(tx, {
+        date: values.preferredDate,
+        time: values.preferredTime,
         durationMin,
-        sessionMode: values.sessionMode,
-        notes: values.notes ?? null,
-        amountKes: price.totalKes,
-        depositKes: price.depositKes,
-        amountPaidKes: 0,
-      },
-      select: { id: true, reference: true },
+      });
+
+      return tx.booking.create({
+        data: {
+          reference: generateReference("RB"),
+          userId: session?.userId ?? null,
+          serviceId: price.serviceId,
+          therapistId: therapist?.id ?? null,
+          clientName: values.clientName,
+          clientEmail: values.clientEmail,
+          clientPhone: normalizePhone(values.clientPhone),
+          preferredDate: values.preferredDate,
+          preferredTime: values.preferredTime,
+          durationMin,
+          sessionMode: values.sessionMode,
+          notes: values.notes ?? null,
+          amountKes: price.totalKes,
+          depositKes: price.depositKes,
+          amountPaidKes: 0,
+        },
+        select: { id: true, reference: true },
+      });
     });
 
     revalidatePath("/dashboard/bookings");
@@ -108,6 +114,11 @@ export async function createBooking(
       balanceKes: price.balanceKes,
     });
   } catch (error) {
+    if (error instanceof SlotUnavailableError) {
+      return fail(SLOT_UNAVAILABLE_MESSAGE, {
+        preferredTime: ["Choose a different time"],
+      });
+    }
     return failure("createBooking", error);
   }
 }
@@ -154,27 +165,27 @@ export async function reschedulePaidBooking(input: {
     }
 
     const durationMin = sessionMinutes(booking.durationMin, booking.service?.durationMin);
-    const slotFree = await isSlotAvailable({
-      date,
-      time: input.time,
-      durationMin,
-      ignoreBookingId: booking.id,
-    });
-    if (!slotFree) {
-      return fail("That day and time is already booked. Choose a different slot.");
-    }
 
-    await prisma.booking.update({
-      where: { id: booking.id },
-      data: {
-        preferredDate: date,
-        preferredTime: input.time,
+    await withSlotLock(async (tx) => {
+      await assertSlotFree(tx, {
+        date,
+        time: input.time,
         durationMin,
-        rescheduleReason: null,
-      },
-    });
+        ignoreBookingId: booking.id,
+      });
 
-    await reconcileBookingSlots();
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: {
+          preferredDate: date,
+          preferredTime: input.time,
+          durationMin,
+          rescheduleReason: null,
+        },
+      });
+
+      await reconcileBookingSlots(tx);
+    });
     const fresh = await prisma.booking.findUnique({
       where: { id: booking.id },
       select: { rescheduleReason: true },
@@ -189,6 +200,9 @@ export async function reschedulePaidBooking(input: {
 
     return ok({ time: input.time });
   } catch (error) {
+    if (error instanceof SlotUnavailableError) {
+      return fail(SLOT_UNAVAILABLE_MESSAGE);
+    }
     return failure("reschedulePaidBooking", error);
   }
 }

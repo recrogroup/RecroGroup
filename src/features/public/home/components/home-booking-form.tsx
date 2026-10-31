@@ -14,6 +14,7 @@ import {
   generateAvailableDates,
   toDateOnly,
 } from "@/features/public/booking/lib/schedule";
+import { listSlotAvailability } from "@/server/actions/booking";
 
 const fieldClassName =
   "w-full cursor-pointer appearance-none rounded-xl border border-border bg-background px-4 py-3 pr-10 text-sm text-foreground transition-colors hover:border-primary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
@@ -65,10 +66,35 @@ export function HomeBookingForm({
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [availableDates, setAvailableDates] = useState<Date[]>([]);
+  const [takenTimes, setTakenTimes] = useState<string[]>([]);
 
   useEffect(() => {
     setAvailableDates(generateAvailableDates());
   }, []);
+
+  useEffect(() => {
+    if (!date) {
+      setTakenTimes([]);
+      return;
+    }
+    let cancelled = false;
+    listSlotAvailability(date, 60)
+      .then((slots) => {
+        if (!cancelled) {
+          setTakenTimes(slots.filter((slot) => slot.taken).map((slot) => slot.time));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setTakenTimes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [date]);
+
+  useEffect(() => {
+    if (time && takenTimes.includes(time)) setTime("");
+  }, [time, takenTimes]);
 
   const dateOptions = useMemo(
     () =>
@@ -164,8 +190,8 @@ export function HomeBookingForm({
             >
               <option value="">{date ? "Select a time" : "Choose a date first"}</option>
               {TIME_SLOTS.map((slot) => (
-                <option key={slot} value={slot}>
-                  {slot}
+                <option key={slot} value={slot} disabled={takenTimes.includes(slot)}>
+                  {takenTimes.includes(slot) ? `${slot} · booked` : slot}
                 </option>
               ))}
             </NativeSelect>

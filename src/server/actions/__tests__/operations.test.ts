@@ -5,6 +5,7 @@ const prismaMock = {
   inquiry: { update: vi.fn(), delete: vi.fn() },
   booking: {
     update: vi.fn(),
+    create: vi.fn(),
     findUnique: vi.fn(),
     count: vi.fn(),
     delete: vi.fn(),
@@ -18,10 +19,29 @@ const prismaMock = {
   user: { update: vi.fn() },
 };
 
-const { requireStaff, requireAdmin, reconcileBookingSlots } = vi.hoisted(() => ({
+class SlotUnavailableError extends Error {
+  constructor() {
+    super("That day and time is already booked.");
+    this.name = "SlotUnavailableError";
+  }
+}
+
+const {
+  requireStaff,
+  requireAdmin,
+  reconcileBookingSlots,
+  withSlotLock,
+  assertSlotFree,
+  createBlockedSlot,
+  deleteBlockedSlot,
+} = vi.hoisted(() => ({
   requireStaff: vi.fn(),
   requireAdmin: vi.fn(),
   reconcileBookingSlots: vi.fn(),
+  withSlotLock: vi.fn(),
+  assertSlotFree: vi.fn(),
+  createBlockedSlot: vi.fn(),
+  deleteBlockedSlot: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
@@ -29,6 +49,11 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 vi.mock("@/server/booking-slots", () => ({
   reconcileBookingSlots,
+  withSlotLock,
+  assertSlotFree,
+  createBlockedSlot,
+  deleteBlockedSlot,
+  SlotUnavailableError,
 }));
 
 vi.mock("@/server/authz", async () => {
@@ -45,9 +70,11 @@ const {
   deleteBooking,
   deleteInquiry,
   linkPaymentToBooking,
+  blockCalendarSlot,
   releaseBookingSlot,
   setGriefApplicationStatus,
   setInquiryStatus,
+  unblockCalendarSlot,
 } = await import("@/server/actions/operations");
 
 const STAFF = {
@@ -63,6 +90,8 @@ beforeEach(() => {
   requireStaff.mockResolvedValue(STAFF);
   requireAdmin.mockResolvedValue({ ...STAFF, role: "admin" });
   reconcileBookingSlots.mockResolvedValue([]);
+  withSlotLock.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(prismaMock));
+  assertSlotFree.mockResolvedValue(undefined);
 });
 
 describe("setGriefApplicationStatus", () => {
@@ -180,6 +209,48 @@ describe("assignTherapist", () => {
 
     expect(result.ok).toBe(true);
     expect(prismaMock.therapist.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe("blockCalendarSlot", () => {
+  it("blocks an open weekday and time", async () => {
+    createBlockedSlot.mockResolvedValueOnce({
+      id: "blk_1",
+      weekday: 2,
+      time: "10:00 AM",
+    });
+
+    const result = await blockCalendarSlot({ weekday: 2, time: "10:00 AM" });
+
+    expect(result).toEqual({
+      ok: true,
+      data: { id: "blk_1", weekday: 2, time: "10:00 AM" },
+    });
+    expect(createBlockedSlot).toHaveBeenCalledWith({
+      weekday: 2,
+      time: "10:00 AM",
+      createdById: "u1",
+    });
+  });
+
+  it("refuses a time that is already taken", async () => {
+    createBlockedSlot.mockRejectedValueOnce(new SlotUnavailableError());
+
+    const result = await blockCalendarSlot({ weekday: 2, time: "10:00 AM" });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatch(/already booked or blocked/);
+  });
+});
+
+describe("unblockCalendarSlot", () => {
+  it("removes a staff block", async () => {
+    deleteBlockedSlot.mockResolvedValueOnce({ id: "blk_1" });
+
+    const result = await unblockCalendarSlot("blk_1");
+
+    expect(result).toEqual({ ok: true, data: { id: "blk_1" } });
   });
 });
 
