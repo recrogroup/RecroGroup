@@ -256,6 +256,7 @@ function revalidateSlotPaths() {
 export async function blockCalendarSlot(input: {
   weekday: number;
   time: string;
+  name: string;
 }): Promise<ActionResult<{ id: string; weekday: number; time: string }>> {
   try {
     const session = await requireStaff();
@@ -263,10 +264,13 @@ export async function blockCalendarSlot(input: {
     if (input.weekday < 1 || input.weekday > 6) {
       return fail("Choose a weekday from Monday to Saturday");
     }
+    const name = input.name.trim();
+    if (name.length < 2) return fail("Enter the candidate's name");
 
     const blocked = await createBlockedSlot({
       weekday: input.weekday,
       time: input.time,
+      note: name,
       createdById: session.userId,
     });
 

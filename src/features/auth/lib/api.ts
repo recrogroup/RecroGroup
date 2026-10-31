@@ -1,6 +1,6 @@
 import { authClient } from "@/lib/auth-client";
 import { AuthApiError } from "@/features/auth/lib/errors";
-import { safeCallbackUrl } from "@/features/auth/lib/redirect";
+import { continueUrl } from "@/features/auth/lib/redirect";
 import type {
   ForgotPasswordInput,
   SignInInput,
@@ -62,7 +62,7 @@ export async function signUp(input: SignUpInput) {
 export async function signInWithGoogle(callbackURL = "/") {
   const result = await authClient.signIn.social({
     provider: "google",
-    callbackURL: safeCallbackUrl(callbackURL),
+    callbackURL: continueUrl(callbackURL),
     errorCallbackURL: "/login",
   });
   assertNoAuthError(result);

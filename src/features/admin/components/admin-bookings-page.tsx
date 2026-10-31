@@ -172,7 +172,7 @@ export function AdminBookingsPage({
       <div className="p-6 lg:p-8">
         <PageHeader
           title="Bookings"
-          description="Use the calendar to see reserved hours. Click Block on an empty hour to close it; click a blocked hour to open it again."
+          description="Use the calendar to see reserved hours. Block an open hour with the candidate’s name; click a blocked hour to open it again."
         />
 
         <div className="mt-6">

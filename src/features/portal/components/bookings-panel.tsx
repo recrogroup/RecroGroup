@@ -83,7 +83,7 @@ export function BookingsPanel({
     <div className="space-y-5">
       <PortalPageHeader
         title="Bookings"
-        description="The calendar shows booked hours. Click Block on an empty hour to close it; click a blocked hour to open it again. Website checkouts hold a slot for 5 minutes."
+        description="The calendar shows booked hours. Block an open hour with the candidate’s name; click a blocked hour to open it again. Website checkouts hold a slot for 5 minutes."
         actions={canClear ? <ClearProductionDataButton /> : null}
       />
 

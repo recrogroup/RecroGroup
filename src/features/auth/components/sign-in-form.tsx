@@ -23,7 +23,7 @@ import {
   getFormErrorMessage,
 } from "@/features/auth/lib/form-errors";
 import { useSignIn } from "@/features/auth/lib/queries";
-import { safeCallbackUrl, joinUsUrl } from "@/features/auth/lib/redirect";
+import { continueUrl, joinUsUrl } from "@/features/auth/lib/redirect";
 import { signInSchema, type SignInInput } from "@/features/auth/lib/schemas";
 
 export function SignInForm({
@@ -35,7 +35,7 @@ export function SignInForm({
 }) {
   const router = useRouter();
   const signIn = useSignIn();
-  const afterAuth = safeCallbackUrl(callbackUrl);
+  const afterAuth = continueUrl(callbackUrl);
 
   const form = useForm<SignInInput>({
     resolver: zodResolver(signInSchema),
@@ -76,7 +76,7 @@ export function SignInForm({
       </div>
 
       {/* Google Sign In */}
-      <GoogleAuthButton enabled={googleEnabled} callbackUrl={afterAuth} />
+      <GoogleAuthButton enabled={googleEnabled} callbackUrl={callbackUrl ?? "/"} />
 
       <form onSubmit={onSubmit} className="space-y-6" noValidate>
         <FieldGroup>

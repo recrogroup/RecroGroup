@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { AuthSplitLayout } from "@/features/auth/components/auth-split-layout";
 import { SignUpForm } from "@/features/auth/components/sign-up-form";
-import { safeCallbackUrl } from "@/features/auth/lib/redirect";
+import { postAuthPath } from "@/features/auth/lib/redirect";
 import { isGoogleSignInAvailable } from "@/features/auth/lib/social";
 import { getOptionalSession } from "@/server/authz";
 
@@ -20,7 +20,7 @@ export default async function JoinUsPage({
 }) {
   const { callbackUrl } = await searchParams;
   const session = await getOptionalSession();
-  if (session) redirect(safeCallbackUrl(callbackUrl));
+  if (session) redirect(postAuthPath(session.role, callbackUrl));
 
   return (
     <AuthSplitLayout

@@ -220,7 +220,11 @@ describe("blockCalendarSlot", () => {
       time: "10:00 AM",
     });
 
-    const result = await blockCalendarSlot({ weekday: 2, time: "10:00 AM" });
+    const result = await blockCalendarSlot({
+      weekday: 2,
+      time: "10:00 AM",
+      name: "Asha Wanjiru",
+    });
 
     expect(result).toEqual({
       ok: true,
@@ -229,14 +233,32 @@ describe("blockCalendarSlot", () => {
     expect(createBlockedSlot).toHaveBeenCalledWith({
       weekday: 2,
       time: "10:00 AM",
+      note: "Asha Wanjiru",
       createdById: "u1",
     });
+  });
+
+  it("requires a candidate name", async () => {
+    const result = await blockCalendarSlot({
+      weekday: 2,
+      time: "10:00 AM",
+      name: " ",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatch(/candidate's name/);
+    expect(createBlockedSlot).not.toHaveBeenCalled();
   });
 
   it("refuses a time that is already taken", async () => {
     createBlockedSlot.mockRejectedValueOnce(new SlotUnavailableError());
 
-    const result = await blockCalendarSlot({ weekday: 2, time: "10:00 AM" });
+    const result = await blockCalendarSlot({
+      weekday: 2,
+      time: "10:00 AM",
+      name: "Asha Wanjiru",
+    });
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
