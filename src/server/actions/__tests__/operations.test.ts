@@ -12,6 +12,7 @@ const prismaMock = {
     deleteMany: vi.fn(),
   },
   therapist: { findUnique: vi.fn() },
+  service: { findFirst: vi.fn(), findUnique: vi.fn() },
   payment: { findUnique: vi.fn(), update: vi.fn(), deleteMany: vi.fn() },
   paymentEvent: { deleteMany: vi.fn() },
   appointment: { update: vi.fn(), deleteMany: vi.fn() },
@@ -213,51 +214,69 @@ describe("assignTherapist", () => {
 });
 
 describe("blockCalendarSlot", () => {
-  it("blocks an open weekday and time", async () => {
-    createBlockedSlot.mockResolvedValueOnce({
-      id: "blk_1",
-      weekday: 2,
-      time: "10:00 AM",
+  it("creates a confirmed booking for the candidate", async () => {
+    prismaMock.service.findFirst.mockResolvedValueOnce({
+      id: "svc_1",
+      durationMin: 60,
+      priceKes: 4500,
+    });
+    prismaMock.booking.create.mockResolvedValueOnce({
+      id: "bk_1",
+      preferredTime: "10:00 AM",
     });
 
     const result = await blockCalendarSlot({
-      weekday: 2,
+      date: "2026-11-03",
       time: "10:00 AM",
-      name: "Asha Wanjiru",
+      serviceSlug: "individual",
+      clientName: "Asha Wanjiru",
     });
 
     expect(result).toEqual({
       ok: true,
-      data: { id: "blk_1", weekday: 2, time: "10:00 AM" },
+      data: { id: "bk_1", weekday: 2, time: "10:00 AM" },
     });
-    expect(createBlockedSlot).toHaveBeenCalledWith({
-      weekday: 2,
-      time: "10:00 AM",
-      note: "Asha Wanjiru",
-      createdById: "u1",
-    });
+    expect(prismaMock.booking.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          clientName: "Asha Wanjiru",
+          clientEmail: "",
+          clientPhone: null,
+          preferredTime: "10:00 AM",
+          status: "CONFIRMED",
+          serviceId: "svc_1",
+        }),
+      }),
+    );
   });
 
-  it("requires a candidate name", async () => {
+  it("requires a candidate name and session type", async () => {
     const result = await blockCalendarSlot({
-      weekday: 2,
+      date: "2026-11-03",
       time: "10:00 AM",
-      name: " ",
+      serviceSlug: "",
+      clientName: " ",
     });
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error).toMatch(/candidate's name/);
-    expect(createBlockedSlot).not.toHaveBeenCalled();
+    expect(result.fieldErrors?.clientName ?? result.fieldErrors?.serviceSlug).toBeTruthy();
+    expect(prismaMock.booking.create).not.toHaveBeenCalled();
   });
 
   it("refuses a time that is already taken", async () => {
-    createBlockedSlot.mockRejectedValueOnce(new SlotUnavailableError());
+    prismaMock.service.findFirst.mockResolvedValueOnce({
+      id: "svc_1",
+      durationMin: 60,
+      priceKes: 4500,
+    });
+    assertSlotFree.mockRejectedValueOnce(new SlotUnavailableError());
 
     const result = await blockCalendarSlot({
-      weekday: 2,
+      date: "2026-11-03",
       time: "10:00 AM",
-      name: "Asha Wanjiru",
+      serviceSlug: "individual",
+      clientName: "Asha Wanjiru",
     });
 
     expect(result.ok).toBe(false);

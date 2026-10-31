@@ -65,3 +65,35 @@ export const bookingSchema = z.object({
 
 export type BookingInput = z.input<typeof bookingSchema>;
 export type BookingValues = z.output<typeof bookingSchema>;
+
+export const staffCalendarBookingSchema = z.object({
+  date: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a clinic date"),
+  time: z.string().trim().min(1, "Choose a clinic time"),
+  serviceSlug: z.string().trim().min(1, "Select a session type"),
+  clientName: z.string().trim().min(2, "Enter the candidate's name"),
+  clientEmail: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => value ?? "")
+    .refine(
+      (value) => value === "" || z.email().safeParse(value).success,
+      "Enter a valid email address",
+    ),
+  clientPhone: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => value ?? "")
+    .refine(
+      (value) => value === "" || isValidKenyanPhone(value),
+      "Enter a valid Kenyan phone number",
+    ),
+  sessionMode: z.enum(["IN_PERSON", "ONLINE", "PHONE"]).optional(),
+  notes: z.string().trim().max(2000).optional(),
+});
+
+export type StaffCalendarBookingInput = z.input<typeof staffCalendarBookingSchema>;

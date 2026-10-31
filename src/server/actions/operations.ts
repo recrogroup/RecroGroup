@@ -6,7 +6,6 @@
 
 import { revalidatePath } from "next/cache";
 
-import { Prisma } from "@prisma/client";
 import type {
   AppointmentStatus,
   BookingStatus,
@@ -16,19 +15,29 @@ import type {
 
 import { prisma } from "@/lib/prisma";
 import { ensurePaymentsSchema } from "@/lib/payments/ensure-schema";
+import { generateReference, isValidKenyanPhone, normalizePhone } from "@/lib/payments/utils";
 import { isTimeSlot } from "@/features/public/booking/lib/schedule";
-import { permanentSlotLabel, sessionMinutes } from "@/features/public/booking/lib/slots";
+import {
+  nairobiDate,
+  nairobiWeekday,
+  permanentSlotLabel,
+  sessionMinutes,
+} from "@/features/public/booking/lib/slots";
 import {
   SlotUnavailableError,
   assertSlotFree,
-  createBlockedSlot,
   deleteBlockedSlot,
   reconcileBookingSlots,
   withSlotLock,
 } from "@/server/booking-slots";
 import { AuthorizationError, requireAdmin, requireStaff } from "@/server/authz";
 import type { ActionResult } from "@/server/result";
-import { fail, failure, ok } from "@/server/result";
+import { fail, failure, invalid, ok } from "@/server/result";
+import {
+  PROGRAM_SERVICE_SLUGS,
+  staffCalendarBookingSchema,
+  type StaffCalendarBookingInput,
+} from "@/server/validation/booking";
 
 const GRIEF_STATUSES: GriefApplicationStatus[] = [
   "PENDING",
@@ -253,36 +262,87 @@ function revalidateSlotPaths() {
   revalidatePath("/booking");
 }
 
-export async function blockCalendarSlot(input: {
-  weekday: number;
-  time: string;
-  name: string;
-}): Promise<ActionResult<{ id: string; weekday: number; time: string }>> {
+export async function blockCalendarSlot(
+  input: StaffCalendarBookingInput,
+): Promise<ActionResult<{ id: string; weekday: number; time: string }>> {
+  const parsed = staffCalendarBookingSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+
+  const values = parsed.data;
+
   try {
-    const session = await requireStaff();
-    if (!isTimeSlot(input.time)) return fail("Choose a clinic time");
-    if (input.weekday < 1 || input.weekday > 6) {
+    await requireStaff();
+    if (!isTimeSlot(values.time)) return fail("Choose a clinic time");
+
+    const date = nairobiDate(values.date);
+    if (!date) return fail("Choose a clinic date");
+    const weekday = nairobiWeekday(date);
+    if (weekday < 1 || weekday > 6) {
       return fail("Choose a weekday from Monday to Saturday");
     }
-    const name = input.name.trim();
-    if (name.length < 2) return fail("Enter the candidate's name");
 
-    const blocked = await createBlockedSlot({
-      weekday: input.weekday,
-      time: input.time,
-      note: name,
-      createdById: session.userId,
+    if (
+      PROGRAM_SERVICE_SLUGS.includes(
+        values.serviceSlug as (typeof PROGRAM_SERVICE_SLUGS)[number],
+      )
+    ) {
+      return fail("Choose a session type from the clinic list");
+    }
+
+    const service = await prisma.service.findFirst({
+      where: { slug: values.serviceSlug, isPublished: true },
+      select: { id: true, durationMin: true, priceKes: true },
+    });
+    if (!service) return fail("Choose a session type from the clinic list");
+
+    const durationMin = sessionMinutes(null, service.durationMin);
+    const phone = values.clientPhone
+      ? isValidKenyanPhone(values.clientPhone)
+        ? normalizePhone(values.clientPhone)
+        : null
+      : null;
+    if (values.clientPhone && !phone) {
+      return fail("Enter a valid Kenyan phone number");
+    }
+
+    const booking = await withSlotLock(async (tx) => {
+      await assertSlotFree(tx, {
+        date,
+        time: values.time,
+        durationMin,
+      });
+
+      return tx.booking.create({
+        data: {
+          reference: generateReference("RB"),
+          serviceId: service.id,
+          clientName: values.clientName,
+          clientEmail: values.clientEmail,
+          clientPhone: phone,
+          preferredDate: date,
+          preferredTime: values.time,
+          durationMin,
+          sessionMode: values.sessionMode ?? "IN_PERSON",
+          notes: values.notes || null,
+          status: "CONFIRMED",
+          amountKes: service.priceKes && service.priceKes > 0 ? service.priceKes : null,
+          amountPaidKes: 0,
+        },
+        select: { id: true, preferredTime: true },
+      });
     });
 
     revalidateSlotPaths();
-    return ok(blocked);
+    revalidatePath(`/dashboard/bookings/${booking.id}`);
+    return ok({
+      id: booking.id,
+      weekday,
+      time: booking.preferredTime ?? values.time,
+    });
   } catch (error) {
     if (error instanceof AuthorizationError) return fail(error.message);
     if (error instanceof SlotUnavailableError) {
       return fail("That day and time is already booked or blocked");
-    }
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return fail("That day and time is already blocked");
     }
     return failure("blockCalendarSlot", error);
   }

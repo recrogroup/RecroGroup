@@ -7,19 +7,26 @@ import { formatDate } from "@/features/portal/lib/format";
 import { getRequiredSession } from "@/features/portal/lib/portal-guard";
 import { isAdmin } from "@/features/portal/lib/roles";
 import { listCalendarOccupancy } from "@/server/booking-slots";
+import { listPublishedServices } from "@/server/queries/bookable-services";
 import { listBookings } from "@/server/queries/bookings";
+import { PROGRAM_SERVICE_SLUGS } from "@/server/validation/booking";
 
 export default async function BookingsPage() {
   const session = await getRequiredSession("/dashboard/bookings");
 
-  const [bookings, occupants] = await Promise.all([
+  const [bookings, occupants, publishedServices] = await Promise.all([
     listBookings({
       hasSuccessfulPayment: true,
       includeUnpaidConfirmed: true,
       take: 200,
     }),
     listCalendarOccupancy(),
+    listPublishedServices(),
   ]);
+  const programSlugs = new Set<string>(PROGRAM_SERVICE_SLUGS);
+  const services = publishedServices
+    .filter((service) => !programSlugs.has(service.slug))
+    .map((service) => ({ slug: service.slug, title: service.title }));
 
   const rows: BookingRow[] = bookings.items.map((booking) => ({
     id: booking.id,
@@ -46,6 +53,7 @@ export default async function BookingsPage() {
     <BookingsPanel
       bookings={rows}
       occupants={occupants}
+      services={services}
       canClear={isAdmin(session.role)}
     />
   );

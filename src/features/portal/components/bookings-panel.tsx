@@ -17,6 +17,7 @@ import { ClearProductionDataButton } from "@/features/admin/components/clear-pro
 import {
   BookingCalendar,
   type CalendarOccupant,
+  type CalendarServiceOption,
 } from "@/features/portal/components/booking-calendar";
 import { PortalPageHeader } from "@/features/portal/components/portal-page-header";
 import {
@@ -52,10 +53,12 @@ function humanize(value: string) {
 export function BookingsPanel({
   bookings,
   occupants = [],
+  services = [],
   canClear = false,
 }: {
   bookings: BookingRow[];
   occupants?: CalendarOccupant[];
+  services?: CalendarServiceOption[];
   canClear?: boolean;
 }) {
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -83,11 +86,11 @@ export function BookingsPanel({
     <div className="space-y-5">
       <PortalPageHeader
         title="Bookings"
-        description="The calendar shows booked hours. Block an open hour with the candidate’s name; click a blocked hour to open it again. Website checkouts hold a slot for 5 minutes."
+        description="The calendar shows booked hours. Block an open hour with the candidate’s details to create their booking. Website checkouts hold a slot for 5 minutes."
         actions={canClear ? <ClearProductionDataButton /> : null}
       />
 
-      <BookingCalendar occupants={occupants} />
+      <BookingCalendar occupants={occupants} services={services} />
 
       <Card>
         <CardContent className="p-0">

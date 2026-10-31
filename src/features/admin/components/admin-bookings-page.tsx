@@ -16,6 +16,7 @@ import type { ActionResult } from "@/server/result";
 import {
   BookingCalendar,
   type CalendarOccupant,
+  type CalendarServiceOption,
 } from "@/features/portal/components/booking-calendar";
 
 import { ClearProductionDataButton } from "./clear-production-data-button";
@@ -51,6 +52,7 @@ export type AdminTherapistOption = {
 type AdminBookingsPageProps = {
   bookings: AdminBookingRow[];
   occupants?: CalendarOccupant[];
+  services?: CalendarServiceOption[];
   therapists: AdminTherapistOption[];
   total: number;
   isAdmin: boolean;
@@ -100,6 +102,7 @@ function paymentTone(status: string) {
 export function AdminBookingsPage({
   bookings,
   occupants = [],
+  services = [],
   therapists,
   total,
   isAdmin,
@@ -172,11 +175,11 @@ export function AdminBookingsPage({
       <div className="p-6 lg:p-8">
         <PageHeader
           title="Bookings"
-          description="Use the calendar to see reserved hours. Block an open hour with the candidate’s name; click a blocked hour to open it again."
+          description="Use the calendar to see reserved hours. Block an open hour with the candidate’s details to open their booking page."
         />
 
         <div className="mt-6">
-          <BookingCalendar occupants={occupants} />
+          <BookingCalendar occupants={occupants} services={services} />
         </div>
 
         <div className="mt-6 flex flex-wrap items-center gap-4">

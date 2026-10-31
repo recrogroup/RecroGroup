@@ -8,14 +8,16 @@ import { permanentSlotLabel } from "@/features/public/booking/lib/slots";
 import { formatDate } from "@/features/portal/lib/format";
 import { deliverUnsentBookingReceipts } from "@/lib/payments/receipts";
 import { listCalendarOccupancy } from "@/server/booking-slots";
+import { listPublishedServices } from "@/server/queries/bookable-services";
 import { listBookings } from "@/server/queries/bookings";
 import { listTherapists } from "@/server/queries/catalog";
+import { PROGRAM_SERVICE_SLUGS } from "@/server/validation/booking";
 
 export default async function BookingsPage() {
     const session = await requireAdminArea();
     await deliverUnsentBookingReceipts();
 
-    const [bookings, therapists, occupants] = await Promise.all([
+    const [bookings, therapists, occupants, publishedServices] = await Promise.all([
         listBookings({
             hasSuccessfulPayment: true,
             includeUnpaidConfirmed: true,
@@ -23,7 +25,12 @@ export default async function BookingsPage() {
         }),
         listTherapists(),
         listCalendarOccupancy(),
+        listPublishedServices(),
     ]);
+    const programSlugs = new Set<string>(PROGRAM_SERVICE_SLUGS);
+    const services = publishedServices
+        .filter((service) => !programSlugs.has(service.slug))
+        .map((service) => ({ slug: service.slug, title: service.title }));
 
     const rows: AdminBookingRow[] = bookings.items.map((booking) => ({
         id: booking.id,
@@ -61,6 +68,7 @@ export default async function BookingsPage() {
         <AdminBookingsPage
             bookings={rows}
             occupants={occupants}
+            services={services}
             therapists={therapistOptions}
             total={bookings.total}
             isAdmin={session.role === "admin"}
